@@ -25,7 +25,7 @@ This project creates an interactive 3D visualization of distributed consensus pr
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/yourusername/3d-consensus-visualizer.git
+   git clone https://github.com/spykelionel/3d-consensus-visualizer.git
    cd 3d-consensus-visualizer
    ```
 
@@ -202,8 +202,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you have questions or need help:
 
-- 🐛 **Report bugs**: [Create an issue](https://github.com/yourusername/3d-consensus-visualizer/issues)
-- 💡 **Request features**: [Open a feature request](https://github.com/yourusername/3d-consensus-visualizer/issues)
+- 🐛 **Report bugs**: [Create an issue](https://github.com/spykelionel/3d-consensus-visualizer/issues)
+- 💡 **Request features**: [Open a feature request](https://github.com/spykelionel/3d-consensus-visualizer/issues)
 - 📧 **Contact**: [Your email or contact info]
 
 ---
