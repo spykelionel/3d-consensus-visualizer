@@ -54,6 +54,22 @@ This project creates an interactive 3D visualization of distributed consensus pr
    - Use the timeline slider to jump to specific times
    - Try the step forward/backward buttons for detailed control
 
+## 💻 System Requirements
+
+- **Browser**: Modern browser with WebGL support (Chrome 60+, Firefox 55+, Safari 12+, Edge 79+)
+- **Hardware**: Any device with basic 3D graphics support
+- **Network**: No internet required (runs entirely in browser)
+
+## 🌐 Browser Compatibility
+
+| Browser | Version | Status           |
+| ------- | ------- | ---------------- |
+| Chrome  | 60+     | ✅ Full Support  |
+| Firefox | 55+     | ✅ Full Support  |
+| Safari  | 12+     | ✅ Full Support  |
+| Edge    | 79+     | ✅ Full Support  |
+| IE      | Any     | ❌ Not Supported |
+
 ## 🎮 How to Use
 
 ### Controls Panel (Left Side)
