@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Consensus Debugger</title>
+    <link rel="icon" href="data:," />
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: #1a1a1a;
+        color: white;
+      }
+      canvas {
+        display: block;
+      }
+      #controls {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #333;
+        min-width: 300px;
+      }
+      #info-panel {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #333;
+        min-width: 250px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      button {
+        background: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 6px;
+        cursor: pointer;
+        margin: 5px;
+        font-size: 14px;
+      }
+      button:hover {
+        background: #45a049;
+      }
+      button:disabled {
+        background: #666;
+        cursor: not-allowed;
+      }
+      input[type="range"] {
+        width: 100%;
+        margin: 10px 0;
+      }
+      .control-group {
+        margin: 15px 0;
+      }
+      .control-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      .legend {
+        display: flex;
+        align-items: center;
+        margin: 5px 0;
+      }
+      .legend-color {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        margin-right: 10px;
+      }
+      .event-log {
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 10px;
+        border-radius: 6px;
+        margin-top: 10px;
+      }
+      .event-item {
+        margin: 2px 0;
+        padding: 2px 0;
+      }
+      .event-item.current {
+        background: rgba(76, 175, 80, 0.3);
+        border-left: 3px solid #4caf50;
+        padding-left: 8px;
+      }
+      #time-display {
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        margin: 10px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <h3>🎮 Controls</h3>
+      <div class="control-group">
+        <button id="playPause">▶️ Play</button>
+        <button id="reset">🔄 Reset</button>
+        <button id="stepForward">⏭️ Step Forward</button>
+        <button id="stepBackward">⏮️ Step Backward</button>
+      </div>
+
+      <div class="control-group">
+        <label for="timeline">Timeline: <span id="time-display">0</span></label>
+        <input type="range" id="timeline" min="0" max="10" value="0" step="1" />
+      </div>
+
+      <div class="control-group">
+        <label>Speed:</label>
+        <input type="range" id="speed" min="0.5" max="3" value="1" step="0.5" />
+        <span id="speed-display">1x</span>
+      </div>
+
+      <div class="control-group">
+        <h4>Node States:</h4>
+        <div class="legend">
+          <div class="legend-color" style="background: #9999ff"></div>
+          <span>Follower</span>
+        </div>
+        <div class="legend">
+          <div class="legend-color" style="background: #ffff99"></div>
+          <span>Candidate</span>
+        </div>
+        <div class="legend">
+          <div class="legend-color" style="background: #99ff99"></div>
+          <span>Leader</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="info-panel">
+      <h3>📊 Current State</h3>
+      <div id="current-events"></div>
+
+      <h4>📝 Event Log</h4>
+      <div id="event-log" class="event-log"></div>
+    </div>
+
+    <!-- Use a reliable CDN for Three.js -->
+    <script src="https://unpkg.com/three@0.150.1/build/three.min.js"></script>
+    <script>
+      // Enhanced trace data with more descriptive events
+      const trace = [
+        {
+          time: 0,
+          event: "start",
+          node: "A",
+          state: "Follower",
+          description: "System starts - all nodes are followers",
+        },
+        {
+          time: 2,
+          event: "send",
+          from: "A",
+          to: "B",
+          type: "RequestVote",
+          description: "Node A requests vote from Node B",
+        },
+        {
+          time: 4,
+          event: "state_change",
+          node: "B",
+          state: "Candidate",
+          description: "Node B becomes candidate (election timeout)",
+        },
+        {
+          time: 6,
+          event: "send",
+          from: "B",
+          to: "C",
+          type: "RequestVote",
+          description: "Node B requests vote from Node C",
+        },
+        {
+          time: 8,
+          event: "state_change",
+          node: "B",
+          state: "Leader",
+          description: "Node B receives majority votes and becomes leader",
+        },
+      ];
+
+      let currentTime = 0;
+      let isPlaying = false;
+      let playbackSpeed = 1;
+      let playbackInterval;
+
+      // Basic Three.js setup
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1a1a);
+
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      const nodes = {};
+      const nodePositions = { A: [-5, 0, 0], B: [0, 0, 0], C: [5, 0, 0] };
+      const colors = {
+        Follower: 0x9999ff,
+        Candidate: 0xffff99,
+        Leader: 0x99ff99,
+      };
+
+      // Add lighting
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(10, 10, 5);
+      directionalLight.castShadow = true;
+      scene.add(directionalLight);
+
+      // Create node spheres with labels
+      Object.keys(nodePositions).forEach((id) => {
+        const [x, y, z] = nodePositions[id];
+
+        // Create sphere
+        const material = new THREE.MeshPhongMaterial({
+          color: colors.Follower,
+          shininess: 100,
+        });
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(1, 32, 32),
+          material
+        );
+        sphere.position.set(x, y, z);
+        sphere.castShadow = true;
+        sphere.receiveShadow = true;
+        scene.add(sphere);
+
+        // Add node label
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        canvas.width = 128;
+        canvas.height = 64;
+        context.fillStyle = "white";
+        context.font = "24px Arial";
+        context.textAlign = "center";
+        context.fillText(`Node ${id}`, 64, 32);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const labelMaterial = new THREE.SpriteMaterial({ map: texture });
+        const label = new THREE.Sprite(labelMaterial);
+        label.position.set(x, y + 2, z);
+        label.scale.set(2, 1, 1);
+        scene.add(label);
+
+        nodes[id] = { mesh: sphere, state: "Follower", label: label };
+      });
+
+      camera.position.set(0, 5, 12);
+      camera.lookAt(0, 0, 0);
+
+      // Apply an event up to a given time
+      function stepTo(time) {
+        // Remove existing message lines
+        scene.children
+          .filter((obj) => obj.type === "Line")
+          .forEach((line) => scene.remove(line));
+
+        // Reset nodes to Follower
+        Object.values(nodes).forEach((n) => {
+          n.mesh.material.color.setHex(colors.Follower);
+          n.state = "Follower";
+        });
+
+        // Apply all relevant events
+        trace.forEach((event) => {
+          if (event.time <= time) {
+            if (event.event === "state_change") {
+              const node = nodes[event.node];
+              node.mesh.material.color.setHex(colors[event.state]);
+              node.state = event.state;
+            }
+            if (event.event === "send") {
+              const fromPos = nodes[event.from].mesh.position;
+              const toPos = nodes[event.to].mesh.position;
+              const lineMat = new THREE.LineBasicMaterial({
+                color: 0x00ff00,
+                linewidth: 3,
+              });
+              const points = [fromPos.clone(), toPos.clone()];
+              const geom = new THREE.BufferGeometry().setFromPoints(points);
+              const line = new THREE.Line(geom, lineMat);
+              scene.add(line);
+
+              // Remove line after animation
+              setTimeout(() => {
+                if (scene.children.includes(line)) {
+                  scene.remove(line);
+                }
+              }, 2000);
+            }
+          }
+        });
+
+        updateInfoPanel(time);
+      }
+
+      function updateInfoPanel(time) {
+        const currentEvents = document.getElementById("current-events");
+        const eventLog = document.getElementById("event-log");
+        const timeDisplay = document.getElementById("time-display");
+
+        timeDisplay.textContent = time;
+
+        // Update current events
+        const eventsAtTime = trace.filter((e) => e.time <= time);
+        const currentStates = {};
+        Object.keys(nodes).forEach((id) => {
+          currentStates[id] = nodes[id].state;
+        });
+
+        currentEvents.innerHTML = `
+          <div><strong>Node A:</strong> ${currentStates.A}</div>
+          <div><strong>Node B:</strong> ${currentStates.B}</div>
+          <div><strong>Node C:</strong> ${currentStates.C}</div>
+        `;
+
+        // Update event log
+        eventLog.innerHTML = "";
+        trace.forEach((event, index) => {
+          const eventDiv = document.createElement("div");
+          eventDiv.className = "event-item";
+          if (event.time <= time) {
+            eventDiv.className += " current";
+          }
+          eventDiv.innerHTML = `
+            <strong>T${event.time}:</strong> ${event.description}
+          `;
+          eventLog.appendChild(eventDiv);
+        });
+
+        eventLog.scrollTop = eventLog.scrollHeight;
+      }
+
+      // Render loop
+      function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      // Enhanced controls
+      document.getElementById("playPause").addEventListener("click", () => {
+        isPlaying = !isPlaying;
+        const button = document.getElementById("playPause");
+        button.textContent = isPlaying ? "⏸️ Pause" : "▶️ Play";
+
+        if (isPlaying) {
+          startPlayback();
+        } else {
+          stopPlayback();
+        }
+      });
+
+      document.getElementById("reset").addEventListener("click", () => {
+        currentTime = 0;
+        isPlaying = false;
+        document.getElementById("playPause").textContent = "▶️ Play";
+        document.getElementById("timeline").value = 0;
+        stopPlayback();
+        stepTo(0);
+      });
+
+      document.getElementById("stepForward").addEventListener("click", () => {
+        if (currentTime < 10) {
+          currentTime++;
+          document.getElementById("timeline").value = currentTime;
+          stepTo(currentTime);
+        }
+      });
+
+      document.getElementById("stepBackward").addEventListener("click", () => {
+        if (currentTime > 0) {
+          currentTime--;
+          document.getElementById("timeline").value = currentTime;
+          stepTo(currentTime);
+        }
+      });
+
+      document.getElementById("timeline").addEventListener("input", (e) => {
+        currentTime = +e.target.value;
+        stepTo(currentTime);
+      });
+
+      document.getElementById("speed").addEventListener("input", (e) => {
+        playbackSpeed = +e.target.value;
+        document.getElementById("speed-display").textContent =
+          playbackSpeed + "x";
+        if (isPlaying) {
+          stopPlayback();
+          startPlayback();
+        }
+      });
+
+      function startPlayback() {
+        playbackInterval = setInterval(() => {
+          if (isPlaying && currentTime < 10) {
+            currentTime++;
+            document.getElementById("timeline").value = currentTime;
+            stepTo(currentTime);
+          } else if (currentTime >= 10) {
+            isPlaying = false;
+            document.getElementById("playPause").textContent = "▶️ Play";
+            stopPlayback();
+          }
+        }, 1000 / playbackSpeed);
+      }
+
+      function stopPlayback() {
+        if (playbackInterval) {
+          clearInterval(playbackInterval);
+          playbackInterval = null;
+        }
+      }
+
+      // Handle resizing
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // Initialize
+      stepTo(0);
+    </script>
+  </body>
+</html>
